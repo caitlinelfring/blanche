@@ -1,0 +1,11 @@
+.git
+.env
+.gitignore
+Dockerfile
+Makefile
+*.yaml
+*.md
+chart
+
+# static binary
+bin
