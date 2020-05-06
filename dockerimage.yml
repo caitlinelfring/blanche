@@ -1,0 +1,29 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ master ]
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+  pull_request:
+    branches: [ master ]
+  
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Get current date
+      id: date
+      run: echo "::set-output name=date::$(date)"
+    - uses: docker/build-push-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        repository: rtrautomation/blanche
+        tag_with_ref: true
+        build_args: "BUILD_VERSION=${{ github.sha }},BUILD_DATE=${{steps.date.outputs.date}}"
+        add_git_labels: true
