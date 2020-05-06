@@ -13,10 +13,10 @@ COPY . ./
 # Make it runnable on alpine
 RUN CGO_ENABLED=0 GOOS=linux go build \
   -ldflags="-X 'main.BuildTime=${BUILD_TIME}' -X 'main.BuildVersion=${BUILD_VERSION}'" \
-  -a -installsuffix cgo -o cfgupdater .
+  -a -installsuffix cgo -o blanche .
 
 ######################
 
 FROM alpine:latest
-COPY --from=builder /app/cfgupdater /cfgupdater
-CMD [ "/cfgupdater" ]
+COPY --from=builder /app/blanche /blanche
+CMD [ "/blanche" ]
