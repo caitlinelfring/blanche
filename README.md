@@ -1,6 +1,6 @@
 # ![blanche](blanche.png)
 
-**blanche** is a tool that automates the portion of your [GitOps](https://www.cloudbees.com/gitops/what-is-gitops) workflow in Kubernetes between your CI pipeline, which creates your Docker images, and your CD pipeline, which deploys your Docker images.
+**blanche** is a tool that automates the portion of your [GitOps](https://www.gitops.tech/) workflow in Kubernetes between your CI pipeline, which creates your Docker images, and your CD pipeline, which deploys your Docker images.
 
 Take the following GitOps workflow:
 
