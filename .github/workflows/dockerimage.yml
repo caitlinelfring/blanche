@@ -2,12 +2,12 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master ] # This will push latest tag
     tags:
       - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
 
 jobs:
-  dockerimage:
+  build:
     runs-on: ubuntu-latest
 
     steps:
