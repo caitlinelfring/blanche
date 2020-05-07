@@ -23,5 +23,5 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
         repository: rtrautomation/blanche
         tag_with_ref: true
-        build_args: "BUILD_VERSION=${{ github.sha }},BUILD_DATE=${{steps.date.outputs.date}}"
+        build_args: "BUILD_VERSION=${{ github.sha }},BUILD_TIME=${{ steps.date.outputs.date }}"
         add_git_labels: true
