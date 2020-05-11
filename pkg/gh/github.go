@@ -20,6 +20,10 @@ var client *github.Client
 const (
 	ErrTagMatchesCurrentTag  = "New tag matches the tag in existing manifest"
 	ErrTagPrecedesCurrentTag = "New tag precedes existing tag"
+
+	// TODO: These should be dynamic
+	GitCommitAuthorName  = "Caitlin Elfring"
+	GitCommitAuthorEmail = "celfring@renttherunway.com"
 )
 
 type gitUpdate struct {
@@ -207,8 +211,8 @@ func (g *gitUpdate) pushCommit(ref *github.Reference, tree *github.Tree) (err er
 	author := &github.CommitAuthor{
 		Date: &date,
 		// TODO: dynamic
-		Name:  github.String("Caitlin Elfring"),
-		Email: github.String("celfring@gmail.com"),
+		Name:  github.String(GitCommitAuthorName),
+		Email: github.String(GitCommitAuthorEmail),
 	}
 	commit := &github.Commit{
 		Author:  author,
