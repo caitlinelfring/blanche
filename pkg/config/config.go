@@ -13,33 +13,34 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const (
-	ErrTagNotValid = "Tag is not valid semver"
-)
+var ErrTagNotValid = errors.New("Tag is not valid semver")
 
 var manifests ManifestConfigs
-
-func init() {
-	if err := manifests.load(getEnvDefault("MANIFEST_PATH", "manifest.yaml")); err != nil {
-		panic(err)
-	}
-}
 
 type ManifestConfigs []ManifestConfig
 
 type ManifestConfig struct {
 	DockerRepo string `yaml:"docker_repo"`
-	Manifests  []struct {
-		ConfigRepo  string `yaml:"config_repo"`
-		File        string `yaml:"file"`
-		BaseBranch  string `yaml:"base_branch"`
-		PullRequest bool   `yaml:"pull_request"`
-	}
+	Manifests  []ManifestEntry
+}
+
+type ManifestEntry struct {
+	ConfigRepo  string `yaml:"config_repo"`
+	File        string `yaml:"file"`
+	BaseBranch  string `yaml:"base_branch"`
+	PullRequest bool   `yaml:"pull_request"`
 }
 
 func GetManifest(dockerRepo string) *ManifestConfig {
+	if manifests == nil {
+		if err := manifests.load(getEnvDefault("MANIFEST_PATH", "manifest.yaml")); err != nil {
+			log.Println(err)
+			return nil
+		}
+	}
 	return manifests.getManifest(dockerRepo)
 }
+
 func (mcs *ManifestConfigs) getManifest(dockerRepo string) *ManifestConfig {
 	for _, m := range *mcs {
 		if m.DockerRepo == dockerRepo {
@@ -61,7 +62,7 @@ func (m *ManifestConfig) GenerateGitUpdates(name, tag string) error {
 	// Only update tags that match semver
 	if !(semver.IsValid(tag)) {
 		log.Printf("tag was not semver, skipping: %s", tag)
-		return errors.New(ErrTagNotValid)
+		return ErrTagNotValid
 	}
 
 	for _, mc := range m.Manifests {
@@ -69,8 +70,7 @@ func (m *ManifestConfig) GenerateGitUpdates(name, tag string) error {
 		if !mc.PullRequest {
 			targetBranch = mc.BaseBranch
 		}
-		repoOwner := strings.Split(mc.ConfigRepo, "/")[0]
-		repoName := strings.Split(mc.ConfigRepo, "/")[1]
+		repoOwner, repoName := parseRepo(mc.ConfigRepo)
 		if err := gh.CreateGitUpdates(
 			repoOwner,
 			repoName,
@@ -87,6 +87,16 @@ func (m *ManifestConfig) GenerateGitUpdates(name, tag string) error {
 	}
 
 	return nil
+}
+
+func parseRepo(repo string) (owner string, name string) {
+	split := strings.Split(repo, "/")
+	switch len(split) {
+	case 1:
+		return split[0], ""
+	default:
+		return split[0], split[1]
+	}
 }
 
 // the following are helper functions for parsing environment variables

@@ -1,0 +1,14 @@
+- docker_repo: celfring/guestbook # The name of the DockerHub repo to match
+  # Helm values files to update, and on which branch
+  manifests:
+    - file: "charts/guestbook/values.yaml"
+      config_repo: caitlin615/argocd-demo
+      base_branch: "master"
+      pull_request: false # Set to false, will push the change directly to `base_branch`
+
+- docker_repo: celfring/k8s-demo
+  manifests:
+    - file: "charts/k8s-demo/values.yaml"
+      config_repo: caitlin615/argocd-demo
+      base_branch: "master"
+      pull_request: true
