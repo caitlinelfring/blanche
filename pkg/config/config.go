@@ -80,6 +80,7 @@ func (m *ManifestConfig) GenerateGitUpdates(name, tag string) error {
 			name,
 			tag,
 			mc.PullRequest,
+			true, // TODO: configurable via Manifest
 		); err != nil {
 			log.Printf("%s:%s | %s\n%+v", name, tag, err, mc)
 		}

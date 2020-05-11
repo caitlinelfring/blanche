@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v31/github"
@@ -27,14 +29,15 @@ const (
 )
 
 type gitUpdate struct {
-	RepoOwner    string
-	RepoName     string
-	DockerImage  string
-	Tag          string
-	ManifestFile string
-	BaseBranch   string
-	TargetBranch string
-	PullRequest  bool // setting to false will push a commit directly to the BaseBranch
+	RepoOwner        string
+	RepoName         string
+	DockerImage      string
+	Tag              string
+	ManifestFile     string
+	BaseBranch       string
+	TargetBranch     string
+	PullRequest      bool // setting to false will push a commit directly to the BaseBranch
+	CloseOutdatedPRs bool // setting to true will auto-close all PRs that are currently opened that this update supercedes
 }
 
 func init() {
@@ -53,16 +56,17 @@ func CreateGithubClient(accessToken string) {
 	}
 }
 
-func CreateGitUpdates(repoOwner, repoName, manifest, baseBranch, targetBranch, dockerImage, tag string, pullRequest bool) error {
+func CreateGitUpdates(repoOwner, repoName, manifest, baseBranch, targetBranch, dockerImage, tag string, pullRequest, closeOutdatedPRs bool) error {
 	g := gitUpdate{
-		RepoOwner:    repoOwner,
-		RepoName:     repoName,
-		DockerImage:  dockerImage,
-		Tag:          tag,
-		ManifestFile: manifest,
-		BaseBranch:   baseBranch,
-		TargetBranch: targetBranch,
-		PullRequest:  pullRequest,
+		RepoOwner:        repoOwner,
+		RepoName:         repoName,
+		DockerImage:      dockerImage,
+		Tag:              tag,
+		ManifestFile:     manifest,
+		BaseBranch:       baseBranch,
+		TargetBranch:     targetBranch,
+		PullRequest:      pullRequest,
+		CloseOutdatedPRs: closeOutdatedPRs,
 	}
 	return g.CreateUpdates()
 }
@@ -95,6 +99,11 @@ func (g *gitUpdate) CreateUpdates() (err error) {
 			return errInner
 		}
 		log.Printf("Opened new PR: %s | %+v", prURL, g)
+		if g.CloseOutdatedPRs {
+			if errInner = g.closeOutdatedPRs(prURL); err != nil {
+				return errInner
+			}
+		}
 	} else {
 		log.Printf("Pushed new commit: %s | %+v", tree.Entries[0].GetURL(), g)
 	}
@@ -246,4 +255,60 @@ func (g *gitUpdate) createPR(head, base string) (url string, err error) {
 	}
 
 	return pr.GetHTMLURL(), nil
+}
+
+func (g *gitUpdate) closeOutdatedPRs(supersededPRURL string) error {
+	prsToClose, err := g.getOutdatedPRs()
+	if err != nil {
+		return err
+	}
+	for _, pr := range prsToClose {
+		// This will return only the error of the first failure,
+		// and won't attempt to close any PRs after the first failure
+
+		if _, _, err := client.PullRequests.CreateComment(ctx, g.RepoOwner, g.RepoName, pr.GetNumber(), &github.PullRequestComment{
+			Body: github.String("Superseded by " + supersededPRURL),
+		}); err != nil {
+			// Not failing the whole loop because the PR comment failed, we still want it closed
+			log.Printf("Failed to close pr %s: %s", pr.GetHTMLURL(), err)
+		}
+
+		pr.State = github.String("closed")
+		if _, _, err := client.PullRequests.Edit(ctx, g.RepoOwner, g.RepoName, pr.GetNumber(), pr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (g *gitUpdate) getOutdatedPRs() (prs []*github.PullRequest, err error) {
+	openPRs, _, err := client.PullRequests.List(ctx, g.RepoOwner, g.RepoName, &github.PullRequestListOptions{State: "opened"})
+	if err != nil {
+		return
+	}
+
+	for _, pr := range openPRs {
+		if isOlderVersionBumpPR(g.DockerImage, pr) {
+			prs = append(prs, pr)
+		}
+	}
+	return
+}
+
+func isOlderVersionBumpPR(image string, pr *github.PullRequest) bool {
+	dockerImage := strings.Split(image, ":")[0]
+	dockerTag := strings.Split(image, ":")[0]
+	re := regexp.MustCompile(`[auto-release] (.*):(.*) for .*`)
+	if title := re.FindStringSubmatch(pr.GetTitle()); title != nil {
+		prDockerImage := title[1]
+		prDockerTag := title[2]
+		return dockerImage == prDockerImage && isNewerVersion(dockerTag, prDockerTag)
+	}
+	return false
+}
+
+func isNewerVersion(a, b string) bool {
+	return semver.IsValid(a) && semver.IsValid(b) &&
+		// The result will be 0 if a == b, -1 if a < b, or +1 if a > b
+		semver.Compare(a, b) > 0
 }
