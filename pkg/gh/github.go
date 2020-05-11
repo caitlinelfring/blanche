@@ -139,7 +139,7 @@ func (g *gitUpdate) createRef(baseBranchRef, targetBranchRef string) (ref *githu
 	return ref, err
 }
 
-func (g *gitUpdate) getManifestFileContents(ref *github.Reference) (config map[interface{}]interface{}, err error) {
+func (g *gitUpdate) getManifestFileContents(ref *github.Reference) (string, error) {
 	contents, _, _, err := client.Repositories.GetContents(
 		ctx,
 		g.RepoOwner,
@@ -148,33 +148,36 @@ func (g *gitUpdate) getManifestFileContents(ref *github.Reference) (config map[i
 		&github.RepositoryContentGetOptions{Ref: ref.GetRef()},
 	)
 	if err != nil {
-		return
+		return "", err
 	}
-	sContents, err := contents.GetContent()
-	if err != nil {
-		return
-	}
-
-	err = yaml.Unmarshal([]byte(sContents), &config)
-	return
+	return contents.GetContent()
 }
 
-func updateImageTag(contents map[interface{}]interface{}, newTag string) ([]byte, error) {
+func updateImageTag(data string, newTag string) (string, error) {
+	var contents map[interface{}]interface{}
+	if err := yaml.Unmarshal([]byte(data), &contents); err != nil {
+		return "", err
+	}
+
 	imageMap := contents["image"].(map[interface{}]interface{})
 	currentTag := imageMap["tag"].(string)
 	if currentTag == newTag {
-		return nil, errors.New(ErrTagMatchesCurrentTag)
+		return "", errors.New(ErrTagMatchesCurrentTag)
 	}
 
 	// The result will be 0 if a == b, -1 if a < b, or +1 if a > b.
 	if semver.Compare(currentTag, newTag) >= 0 {
-		return nil, errors.New(ErrTagPrecedesCurrentTag)
+		return "", errors.New(ErrTagPrecedesCurrentTag)
 	}
 
 	imageMap["tag"] = newTag
 	contents["image"] = imageMap
 
-	return yaml.Marshal(contents)
+	b, err := yaml.Marshal(contents)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func (g *gitUpdate) newTreeWithChanges(ref *github.Reference) (tree *github.Tree, err error) {
@@ -192,7 +195,7 @@ func (g *gitUpdate) newTreeWithChanges(ref *github.Reference) (tree *github.Tree
 	treeEntries = append(treeEntries, &github.TreeEntry{
 		Path:    github.String(g.ManifestFile),
 		Type:    github.String("blob"),
-		Content: github.String(string(newFileContents)),
+		Content: github.String(newFileContents),
 		Mode:    github.String("100644"),
 	})
 
