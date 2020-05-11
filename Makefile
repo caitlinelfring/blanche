@@ -1,4 +1,3 @@
-RELEASE_VERSION=0.1
 build:
 	docker build -t blanche -f Dockerfile.dev .
 

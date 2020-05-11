@@ -1,12 +1,8 @@
-package webhook
+package handlers
 
-import (
-	"encoding/json"
-)
-
-// DHHookBody is the body received from a dockerhub wehbook request
+// Dockerhub is the body received from a dockerhub wehbook request
 // thank you https://mholt.github.io/json-to-go/
-type DHHookBody struct {
+type Dockerhub struct {
 	CallbackURL string `json:"callback_url"`
 	PushData    struct {
 		Images   []string `json:"images"`
@@ -33,8 +29,6 @@ type DHHookBody struct {
 	} `json:"repository"`
 }
 
-// UnmarshalDHHook unmarshals a request body into a DHHookBody
-func UnmarshalDHHook(body []byte) (resp *DHHookBody, err error) {
-	err = json.Unmarshal(body, &resp)
-	return
+func (dh *Dockerhub) NameAndTag() (string, string) {
+	return dh.Repository.RepoName, dh.PushData.Tag
 }

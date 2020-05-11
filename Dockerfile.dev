@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y inotify-tools
 
 ENV ROOT_PATH /go/src/github.com/RentTheRunway/blanche
 WORKDIR $ROOT_PATH
-ADD . $ROOT_PATH
+COPY . $ROOT_PATH
 
 RUN go build ./...
 

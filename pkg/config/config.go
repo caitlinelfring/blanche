@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/RentTheRunway/blanche/pkg/gh"
@@ -15,6 +16,14 @@ import (
 const (
 	ErrTagNotValid = "Tag is not valid semver"
 )
+
+var manifests ManifestConfigs
+
+func init() {
+	if err := manifests.load(getEnvDefault("MANIFEST_PATH", "manifest.yaml")); err != nil {
+		panic(err)
+	}
+}
 
 type ManifestConfigs []ManifestConfig
 
@@ -28,7 +37,10 @@ type ManifestConfig struct {
 	}
 }
 
-func (mcs *ManifestConfigs) GetManifest(dockerRepo string) *ManifestConfig {
+func GetManifest(dockerRepo string) *ManifestConfig {
+	return manifests.getManifest(dockerRepo)
+}
+func (mcs *ManifestConfigs) getManifest(dockerRepo string) *ManifestConfig {
 	for _, m := range *mcs {
 		if m.DockerRepo == dockerRepo {
 			return &m
@@ -37,7 +49,7 @@ func (mcs *ManifestConfigs) GetManifest(dockerRepo string) *ManifestConfig {
 	return nil
 }
 
-func (mcs *ManifestConfigs) Load(filename string) error {
+func (mcs *ManifestConfigs) load(filename string) error {
 	yamlFile, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
@@ -74,4 +86,12 @@ func (m *ManifestConfig) GenerateGitUpdates(name, tag string) error {
 	}
 
 	return nil
+}
+
+// the following are helper functions for parsing environment variables
+func getEnvDefault(key, defaultValue string) string {
+	if v, ok := os.LookupEnv(key); ok && len(v) > 0 {
+		return v
+	}
+	return defaultValue
 }
