@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/google/go-github/v31/github"
@@ -291,17 +290,15 @@ func (g *gitUpdate) getOutdatedPRs() (prs []*github.PullRequest, err error) {
 	}
 
 	for _, pr := range openPRs {
-		if isOlderVersionBumpPR(g.DockerImage, pr) {
+		if isOlderVersionBumpPR(g.DockerImage, g.Tag, pr) {
 			prs = append(prs, pr)
 		}
 	}
 	return
 }
 
-func isOlderVersionBumpPR(image string, pr *github.PullRequest) bool {
-	dockerImage := strings.Split(image, ":")[0]
-	dockerTag := strings.Split(image, ":")[0]
-	re := regexp.MustCompile(`[auto-release] (.*):(.*) for .*`)
+func isOlderVersionBumpPR(dockerImage, dockerTag string, pr *github.PullRequest) bool {
+	re := regexp.MustCompile(`\[auto-release\] (.*):(.*) for .*`)
 	if title := re.FindStringSubmatch(pr.GetTitle()); title != nil {
 		prDockerImage := title[1]
 		prDockerTag := title[2]
