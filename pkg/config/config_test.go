@@ -61,7 +61,7 @@ func TestGetEnvDefault(t *testing.T) {
 	}
 }
 
-func TestGenerateGitUpdates(t *testing.T) {
+func TestManifestConfig_GenerateGitUpdates(t *testing.T) {
 	m := &ManifestConfig{
 		DockerRepo: "celfring/guestbook",
 		Manifests: []ManifestEntry{

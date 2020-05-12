@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -66,22 +65,17 @@ func (m *ManifestConfig) GenerateGitUpdates(name, tag string) error {
 	}
 
 	for _, mc := range m.Manifests {
-		targetBranch := fmt.Sprintf("auto-release/%s/%s-%s", mc.BaseBranch, name, tag)
-		if !mc.PullRequest {
-			targetBranch = mc.BaseBranch
-		}
 		repoOwner, repoName := parseRepo(mc.ConfigRepo)
-		if err := gh.CreateGitUpdates(
+		if err := gh.NewGitUpdates(
 			repoOwner,
 			repoName,
 			mc.File,
 			mc.BaseBranch,
-			targetBranch,
 			name,
 			tag,
 			mc.PullRequest,
 			true, // TODO: configurable via Manifest
-		); err != nil {
+		).CreateUpdates(); err != nil {
 			log.Printf("%s:%s | %s\n%+v", name, tag, err, mc)
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 )
 
 var ctx = context.Background()
-var client *github.Client
+var _client *github.Client
 
 const (
 	ErrTagMatchesCurrentTag  = "New tag matches the tag in existing manifest"
@@ -33,24 +34,30 @@ type gitUpdate struct {
 	Tag              string
 	ManifestFile     string
 	BaseBranch       string
-	TargetBranch     string
 	PullRequest      bool // setting to false will push a commit directly to the BaseBranch
 	CloseOutdatedPRs bool // setting to true will auto-close all PRs that are currently opened that this update supercedes
+
+	client       *github.Client
+	ctx          context.Context
+	targetBranch string
+	baseRef      string
+	targetRef    string
 }
 
-func CreateGithubClient(accessToken string) {
+func CreateGithubClient(accessToken string) *github.Client {
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: accessToken},
 	)
 	tc := oauth2.NewClient(ctx, ts)
 
-	client = github.NewClient(tc)
-	if octocat, _, err := client.Octocat(ctx, "Nobody ever believes me when Im telling the truth - I guess its the curse of being a devastatingly beautiful woman"); err == nil {
+	_client = github.NewClient(tc)
+	if octocat, _, err := _client.Octocat(ctx, "Nobody ever believes me when Im telling the truth - I guess its the curse of being a devastatingly beautiful woman"); err == nil {
 		log.Println(octocat)
 	}
+	return _client
 }
 
-func CreateGitUpdates(repoOwner, repoName, manifest, baseBranch, targetBranch, dockerImage, tag string, pullRequest, closeOutdatedPRs bool) error {
+func NewGitUpdates(repoOwner, repoName, manifest, baseBranch, dockerImage, tag string, pullRequest, closeOutdatedPRs bool) *gitUpdate {
 	g := gitUpdate{
 		RepoOwner:        repoOwner,
 		RepoName:         repoName,
@@ -58,19 +65,29 @@ func CreateGitUpdates(repoOwner, repoName, manifest, baseBranch, targetBranch, d
 		Tag:              tag,
 		ManifestFile:     manifest,
 		BaseBranch:       baseBranch,
-		TargetBranch:     targetBranch,
 		PullRequest:      pullRequest,
 		CloseOutdatedPRs: closeOutdatedPRs,
 	}
-	return g.CreateUpdates()
+
+	targetBranch := fmt.Sprintf("auto-release/%s/%s-%s", g.BaseBranch, g.DockerImage, g.Tag)
+	if !g.PullRequest {
+		targetBranch = g.BaseBranch
+	}
+	g.targetBranch = targetBranch
+	g.targetRef = "refs/heads/" + g.targetBranch
+	g.baseRef = "refs/heads/" + g.BaseBranch
+
+	if _client == nil {
+		_client = CreateGithubClient(os.Getenv("GITHUB_ACCESS_TOKEN"))
+	}
+	g.client = _client
+
+	return &g
 }
 
 // CreateUpdates will create PRs/push commits for the given ManifestUpdate
 func (g *gitUpdate) CreateUpdates() (err error) {
-	baseRef := "refs/heads/" + g.BaseBranch
-	targetRef := "refs/heads/" + g.TargetBranch
-
-	ref, err := g.createRef(baseRef, targetRef)
+	ref, err := g.createRef(g.baseRef, g.targetRef)
 	if err != nil {
 		log.Println(err)
 		return
@@ -87,7 +104,7 @@ func (g *gitUpdate) CreateUpdates() (err error) {
 		return
 	}
 	if g.PullRequest {
-		prURL, errInner := g.createPR(targetRef, baseRef)
+		prURL, errInner := g.createPR(g.targetRef, g.baseRef)
 		if errInner != nil {
 			log.Println(errInner)
 			return errInner
@@ -105,7 +122,7 @@ func (g *gitUpdate) CreateUpdates() (err error) {
 }
 
 func (g *gitUpdate) createRef(baseBranchRef, targetBranchRef string) (ref *github.Reference, err error) {
-	if ref, _, err = client.Git.GetRef(
+	if ref, _, err = g.client.Git.GetRef(
 		ctx,
 		g.RepoOwner,
 		g.RepoName,
@@ -115,7 +132,7 @@ func (g *gitUpdate) createRef(baseBranchRef, targetBranchRef string) (ref *githu
 	}
 
 	// Get base branch ref to create new ref from
-	baseRef, _, err := client.Git.GetRef(
+	baseRef, _, err := g.client.Git.GetRef(
 		ctx,
 		g.RepoOwner,
 		g.RepoName,
@@ -129,12 +146,12 @@ func (g *gitUpdate) createRef(baseBranchRef, targetBranchRef string) (ref *githu
 		Ref:    github.String(targetBranchRef),
 		Object: &github.GitObject{SHA: baseRef.Object.SHA},
 	}
-	ref, _, err = client.Git.CreateRef(ctx, g.RepoOwner, g.RepoName, newRef)
+	ref, _, err = g.client.Git.CreateRef(ctx, g.RepoOwner, g.RepoName, newRef)
 	return ref, err
 }
 
 func (g *gitUpdate) getManifestFileContents(ref *github.Reference) (string, error) {
-	contents, _, _, err := client.Repositories.GetContents(
+	contents, _, _, err := g.client.Repositories.GetContents(
 		ctx,
 		g.RepoOwner,
 		g.RepoName,
@@ -193,7 +210,7 @@ func (g *gitUpdate) newTreeWithChanges(ref *github.Reference) (tree *github.Tree
 		Mode:    github.String("100644"),
 	})
 
-	tree, _, err = client.Git.CreateTree(
+	tree, _, err = g.client.Git.CreateTree(
 		ctx,
 		g.RepoOwner,
 		g.RepoName,
@@ -205,7 +222,7 @@ func (g *gitUpdate) newTreeWithChanges(ref *github.Reference) (tree *github.Tree
 
 func (g *gitUpdate) pushCommit(ref *github.Reference, tree *github.Tree) (err error) {
 	// Get the parent commit to attach the commit to.,
-	parent, _, err := client.Repositories.GetCommit(ctx, g.RepoOwner, g.RepoName, *ref.Object.SHA)
+	parent, _, err := g.client.Repositories.GetCommit(ctx, g.RepoOwner, g.RepoName, ref.Object.GetSHA())
 	if err != nil {
 		return err
 	}
@@ -226,27 +243,27 @@ func (g *gitUpdate) pushCommit(ref *github.Reference, tree *github.Tree) (err er
 		Tree:    tree,
 		Parents: []*github.Commit{parent.Commit},
 	}
-	newCommit, _, err := client.Git.CreateCommit(ctx, g.RepoOwner, g.RepoName, commit)
+	newCommit, _, err := g.client.Git.CreateCommit(ctx, g.RepoOwner, g.RepoName, commit)
 	if err != nil {
 		return err
 	}
 
 	// Attach the commit to the master branch.
 	ref.Object.SHA = newCommit.SHA
-	_, _, err = client.Git.UpdateRef(ctx, g.RepoOwner, g.RepoName, ref, false)
+	_, _, err = g.client.Git.UpdateRef(ctx, g.RepoOwner, g.RepoName, ref, false)
 	return err
 }
 
 // createPR creates a pull request. Based on: https://godoc.org/github.com/google/go-github/github#example-PullRequestsService-Create
 func (g *gitUpdate) createPR(head, base string) (url string, err error) {
 	newPR := &github.NewPullRequest{
-		Title: github.String(fmt.Sprintf("[auto-release] %s:%s for %s", g.DockerImage, g.Tag, base)),
-		Body:  github.String(fmt.Sprintf("This PR was automatically generated by a creation of a new docker image: `%s:%s`", g.DockerImage, g.Tag)),
+		Title: github.String(fmt.Sprintf("[auto-release] %s:%s for %s", g.DockerImage, g.Tag, g.BaseBranch)),
+		Body:  github.String(fmt.Sprintf("This PR was automatically generated by a creation of a new docker image: %s:%s", g.DockerImage, g.Tag)),
 		Head:  github.String(head),
 		Base:  github.String(base),
 	}
 
-	pr, _, err := client.PullRequests.Create(ctx, g.RepoOwner, g.RepoName, newPR)
+	pr, _, err := g.client.PullRequests.Create(ctx, g.RepoOwner, g.RepoName, newPR)
 	if err != nil {
 		return "", err
 	}
@@ -263,7 +280,7 @@ func (g *gitUpdate) closeOutdatedPRs(supersededPRURL string) error {
 		// This will return only the error of the first failure,
 		// and won't attempt to close any PRs after the first failure
 
-		if _, _, err := client.PullRequests.CreateComment(ctx, g.RepoOwner, g.RepoName, pr.GetNumber(), &github.PullRequestComment{
+		if _, _, err := g.client.PullRequests.CreateComment(ctx, g.RepoOwner, g.RepoName, pr.GetNumber(), &github.PullRequestComment{
 			Body: github.String("Superseded by " + supersededPRURL),
 		}); err != nil {
 			// Not failing the whole loop because the PR comment failed, we still want it closed
@@ -271,7 +288,7 @@ func (g *gitUpdate) closeOutdatedPRs(supersededPRURL string) error {
 		}
 
 		pr.State = github.String("closed")
-		if _, _, err := client.PullRequests.Edit(ctx, g.RepoOwner, g.RepoName, pr.GetNumber(), pr); err != nil {
+		if _, _, err := g.client.PullRequests.Edit(ctx, g.RepoOwner, g.RepoName, pr.GetNumber(), pr); err != nil {
 			return err
 		}
 	}
@@ -279,7 +296,7 @@ func (g *gitUpdate) closeOutdatedPRs(supersededPRURL string) error {
 }
 
 func (g *gitUpdate) getOutdatedPRs() (prs []*github.PullRequest, err error) {
-	openPRs, _, err := client.PullRequests.List(ctx, g.RepoOwner, g.RepoName, &github.PullRequestListOptions{State: "opened"})
+	openPRs, _, err := g.client.PullRequests.List(ctx, g.RepoOwner, g.RepoName, &github.PullRequestListOptions{State: "opened"})
 	if err != nil {
 		return
 	}
