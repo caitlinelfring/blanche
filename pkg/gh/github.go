@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"regexp"
 	"time"
 
@@ -37,10 +36,6 @@ type gitUpdate struct {
 	TargetBranch     string
 	PullRequest      bool // setting to false will push a commit directly to the BaseBranch
 	CloseOutdatedPRs bool // setting to true will auto-close all PRs that are currently opened that this update supercedes
-}
-
-func init() {
-	CreateGithubClient(os.Getenv("GITHUB_ACCESS_TOKEN"))
 }
 
 func CreateGithubClient(accessToken string) {

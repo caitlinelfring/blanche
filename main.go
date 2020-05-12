@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/RentTheRunway/blanche/pkg/gh"
 	"github.com/RentTheRunway/blanche/pkg/handlers"
 	"github.com/gorilla/mux"
 )
@@ -18,6 +19,7 @@ var (
 
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	gh.CreateGithubClient(os.Getenv("GITHUB_ACCESS_TOKEN"))
 
 	r := mux.NewRouter()
 	r.HandleFunc("/webhook/{type}", handlers.DockerHandler)
